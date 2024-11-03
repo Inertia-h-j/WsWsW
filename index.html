@@ -3,115 +3,113 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>쓰레기 분리수거 웹 W.S.W</title>
+    <title>Object Detection with Teachable Machine</title>
     <style>
+        /* CSS 스타일링 */
         body {
             display: flex;
-            flex-direction: column;
-            align-items: center;
             justify-content: center;
+            align-items: center;
             height: 100vh;
             margin: 0;
             font-family: Arial, sans-serif;
+            background-color: #f0f0f0;
         }
-
-        h1 {
-            margin-bottom: 20px;
+        
+        .container {
+            text-align: center;
         }
-
-        #webcam-container {
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            border: 1px solid #ccc;
+        
+        #webcam {
+            width: 100%;
+            max-width: 500px;
+            border: 2px solid #ddd;
             border-radius: 8px;
-            width: 640px;
-            height: 480px;
-            overflow: hidden;
+            margin-top: 20px;
         }
-
-        canvas {
-            border-radius: 8px;
+        
+        #prediction {
+            font-size: 1.2em;
+            margin-top: 10px;
         }
     </style>
 </head>
 <body>
-    <h1>쓰레기를 카메라에 보여주세요</h1>
-    <div id="webcam-container"></div>
-   
-    <script src="node_modules/@tensorflow/tfjs/dist/tf.min.js"></script>
-    <script src="node_modules/@teachablemachine/image/dist/teachablemachine-image.min.js"></script>
+    <div class="container">
+        <h1>Object Detection with Teachable Machine</h1>
+        <video id="webcam" autoplay playsinline></video>
+        <p id="prediction">Loading model...</p>
+    </div>
+    
+    <!-- TensorFlow.js 및 Teachable Machine 라이브러리 -->
+    <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@teachablemachine/image"></script>
+    
     <script>
-        const URL = "https://teachablemachine.withgoogle.com/models/Bu74PJXzl/"; // 모델 URL을 변경하세요
+        // Teachable Machine 모델 URL - Teachable Machine에서 생성한 모델 URL로 변경하세요.
+        const modelURL = "https://teachablemachine.withgoogle.com/models/Bu74PJXzl/";
 
+        // 웹캠 비디오 요소
+        const webcamElement = document.getElementById("webcam");
+        const predictionElement = document.getElementById("prediction");
         let model, webcam, maxPredictions;
 
-        // 모델을 로드합니다
-        async function init() {
-            const modelURL = URL + "model.json";
-            const metadataURL = URL + "metadata.json";
+        // 모델 로드
+        async function loadModel() {
+            const modelURLWithMetadata = `${modelURL}model.json`;
+            const metadataURL = `${modelURL}metadata.json`;
+            model = await tmImage.load(modelURLWithMetadata, metadataURL);
+            maxPredictions = model.getTotalClasses();
 
-            try {
-                // 모델과 메타데이터를 로드합니다
-                model = await tmImage.load(modelURL, metadataURL);
-                maxPredictions = model.getTotalClasses();
+            // 웹캠 셋업
+            const flip = true;
+            webcam = new tmImage.Webcam(200, 200, flip);
+            await webcam.setup();
+            await webcam.play();
+            requestAnimationFrame(loop);
 
-                // 웹캠을 설정합니다
-                const flip = true; // 웹캠 이미지를 반전시킬지 여부
-                webcam = new tmImage.Webcam(640, 480, flip); // width, height, flip
-                await webcam.setup({ facingMode: { exact: "environment" } }); // 후면 카메라 설정
-                await webcam.play();
-                window.requestAnimationFrame(loop);
-
-                // 비디오 캔버스를 webcam-container에 추가합니다
-                document.getElementById("webcam-container").appendChild(webcam.canvas);
-            } catch (error) {
-                console.error("모델 또는 웹캠 로드 중 오류 발생:", error);
-            }
+            webcamElement.appendChild(webcam.canvas);
         }
 
+        // 예측 반복
         async function loop() {
-            webcam.update(); // 웹캠 프레임을 업데이트합니다
+            webcam.update();
             await predict();
-            window.requestAnimationFrame(loop);
+            requestAnimationFrame(loop);
         }
 
-        // 예측을 수행합니다
+        // 예측 및 페이지 이동
         async function predict() {
             const prediction = await model.predict(webcam.canvas);
+            let highestProbability = 0;
+            let bestClass = "";
 
-            // 예측된 클래스와 해당 확률을 확인합니다
+            // 각 예측값 확인
             for (let i = 0; i < maxPredictions; i++) {
-                const classPrediction = prediction[i].className;
-                const probability = prediction[i].probability.toFixed(2);
+                const classPrediction = prediction[i];
+                if (classPrediction.probability > highestProbability) {
+                    highestProbability = classPrediction.probability;
+                    bestClass = classPrediction.className;
+                }
+            }
 
-                if (probability > 0.9) { // 90% 이상의 확률로 인식되면
-                    navigateToSite(classPrediction);
-                    break;
+            // 예측 결과 업데이트
+            predictionElement.innerText = `Detected: ${bestClass} (${Math.round(highestProbability * 100)}%)`;
+
+            // 특정 클래스가 감지되면 해당 페이지로 이동
+            if (highestProbability > 0.9) {
+                if (bestClass === "ClassA") {
+                    window.location.href = "pageA.html";
+                } else if (bestClass === "ClassB") {
+                    window.location.href = "pageB.html";
+                } else if (bestClass === "ClassC") {
+                    window.location.href = "pageC.html";
                 }
             }
         }
 
-        // 클래스에 따라 사이트로 이동합니다
-        function navigateToSite(className) {
-            const sites = {
-                "orange": "orange_result.html",
-                "egg": "egg_result.html",
-                "chicken": "chicken_result.html",
-                "vinyl": "vinyl_result.html"
-                // 더 많은 클래스를 추가할 수 있습니다
-            };
-
-            if (sites[className]) {
-                window.location.href = sites[className];
-            } else {
-                console.error("해당 클래스에 대한 사이트가 없습니다:", className);
-            }
-        }
-
-        // 초기화
-        init();
+        // 모델 로드 시작
+        loadModel();
     </script>
 </body>
 </html>
- 
