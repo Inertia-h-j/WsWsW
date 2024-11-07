@@ -1,115 +1,247 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="ko">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Object Detection with Teachable Machine</title>
+    <title>분리수거 도우미</title>
     <style>
-        /* CSS 스타일링 */
         body {
             display: flex;
-            justify-content: center;
+            flex-direction: column;
             align-items: center;
+            justify-content: center;
             height: 100vh;
             margin: 0;
             font-family: Arial, sans-serif;
+        }
+
+        h1 {
+            margin-bottom: 20px;
+            font-size: 24px;
+        }
+
+        #camera-container {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            border: 1px solid #ccc;
+            border-radius: 8px;
+            width: 95vw;
+            height: 45vh;
+            max-width: 640px;
+            max-height: 360px;
+            overflow: hidden;
+            background-color: black;
+        }
+
+        #search {
+            width: 95vw;
+            max-width: 640px;
+            padding: 10px;
+            margin-bottom: 0px;
+            border: 1px solid #ccc;
+            border-radius: 4px;
+            font-size: 18px;
+        }
+
+        @keyframes dropdown {
+            from {
+                opacity: 0;
+                transform: translateY(-10px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        #itemListContainer {
+            display: none;
+            position: fixed;
+            top: 260px;
+            border: 1px solid #ccc;
+            background-color: white;
+            border-radius: 4px;
+            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+            z-index: 1000;
+            width: 95vw;
+            max-width: 660px;
+            max-height: 300px;
+            overflow-y: auto;
+            margin-top: 0px;
+            top: 30px;
+            animation: dropdown 0.3s ease-out;
+        }
+
+        ul {
+            list-style-type: none;
+            padding: 0;
+            margin: 0;
+        }
+
+        li {
+            padding: 10px;
+            cursor: pointer;
+            font-size: 16px;
+        }
+
+        li:hover {
             background-color: #f0f0f0;
         }
-        
-        .container {
+
+        .no-results {
+            color: red;
+            padding: 10px;
             text-align: center;
-        }
-        
-        #webcam {
-            width: 100%;
-            max-width: 500px;
-            border: 2px solid #ddd;
-            border-radius: 8px;
-            margin-top: 20px;
-        }
-        
-        #prediction {
-            font-size: 1.2em;
-            margin-top: 10px;
         }
     </style>
 </head>
 <body>
-    <div class="container">
-        <h1>Object Detection with Teachable Machine</h1>
-        <video id="webcam" autoplay playsinline></video>
-        <p id="prediction">Loading model...</p>
+    <h1>검색 기능</h1>
+    <input type="text" id="search" placeholder="검색어를 입력하세요..." autocomplete="off">
+    <div id="itemListContainer">
+        <ul id="itemList">
+            <li onclick="location.href='vinyl_result.html'">비닐</li>
+            <li onclick="location.href='orange_result.html'">귤 껍질</li>
+            <li onclick="location.href='banana_result.html'">바나나 껍질</li>
+            <li onclick="location.href='chicken_result.html'">치킨 뼈</li>
+            <li onclick="location.href='egg_result.html'">계란 껍질</li>
+            <li onclick="location.href='plastic_result.html'">플라스틱</li>
+            <li onclick="location.href='paper_result.html'">종이박스</li>
+            <li onclick="location.href='styrofoam_result.html'">스티로폼</li>
+            <li onclick="location.href='steal_result.html'">고철</li>
+            <li onclick="location.href='can_result.html'">캔</li>
+            <li onclick="location.href='snack_result.html'">과자봉지</li>
+        </ul>
     </div>
-    
-    <!-- TensorFlow.js 및 Teachable Machine 라이브러리 -->
-    <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs"></script>
-    <script src="https://cdn.jsdelivr.net/npm/@teachablemachine/image"></script>
-    
+
+    <h1>쓰레기를 카메라에 보여주세요</h1>
+    <div id="camera-container">
+        <video id="video" autoplay playsinline></video>
+    </div>
+
+    <!-- TensorFlow.js and Teachable Machine Image library -->
+    <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@3.9.0"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@teachablemachine/image@0.8.4/dist/teachablemachine-image.min.js"></script>
     <script>
-        // Teachable Machine 모델 URL - Teachable Machine에서 생성한 모델 URL로 변경하세요.
-        const modelURL = "https://teachablemachine.withgoogle.com/models/Bu74PJXzl/";
+        const URL = "https://teachablemachine.withgoogle.com/models/zCNkWNvc1/";
 
-        // 웹캠 비디오 요소
-        const webcamElement = document.getElementById("webcam");
-        const predictionElement = document.getElementById("prediction");
-        let model, webcam, maxPredictions;
+        let model, maxPredictions, video;
 
-        // 모델 로드
-        async function loadModel() {
-            const modelURLWithMetadata = `${modelURL}model.json`;
-            const metadataURL = `${modelURL}metadata.json`;
-            model = await tmImage.load(modelURLWithMetadata, metadataURL);
-            maxPredictions = model.getTotalClasses();
+        // 모델과 카메라를 초기화합니다.
+        async function init() {
+            const modelURL = URL + "model.json";
+            const metadataURL = URL + "metadata.json";
 
-            // 웹캠 셋업
-            const flip = true;
-            webcam = new tmImage.Webcam(200, 200, flip);
-            await webcam.setup();
-            await webcam.play();
-            requestAnimationFrame(loop);
+            try {
+                model = await tmImage.load(modelURL, metadataURL);
+                maxPredictions = model.getTotalClasses();
 
-            webcamElement.appendChild(webcam.canvas);
+                // 후면 카메라 스트림을 가져옵니다.
+                video = document.getElementById("video");
+                const stream = await navigator.mediaDevices.getUserMedia({
+                    video: { facingMode: { exact: "environment" } } // 후면 카메라 지정
+                });
+                video.srcObject = stream;
+
+                video.addEventListener('loadeddata', () => {
+                    window.requestAnimationFrame(loop);
+                });
+            } catch (error) {
+                console.error("모델 또는 카메라 로드 중 오류 발생:", error);
+                alert("카메라를 사용할 수 없습니다. 권한을 허용했는지 확인하세요.");
+            }
         }
 
-        // 예측 반복
         async function loop() {
-            webcam.update();
             await predict();
-            requestAnimationFrame(loop);
+            window.requestAnimationFrame(loop);
         }
 
-        // 예측 및 페이지 이동
         async function predict() {
-            const prediction = await model.predict(webcam.canvas);
-            let highestProbability = 0;
-            let bestClass = "";
+            const prediction = await model.predict(video); // 비디오를 통한 예측
 
-            // 각 예측값 확인
             for (let i = 0; i < maxPredictions; i++) {
-                const classPrediction = prediction[i];
-                if (classPrediction.probability > highestProbability) {
-                    highestProbability = classPrediction.probability;
-                    bestClass = classPrediction.className;
-                }
-            }
+                const classPrediction = prediction[i].className;
+                const probability = prediction[i].probability.toFixed(2);
 
-            // 예측 결과 업데이트
-            predictionElement.innerText = `Detected: ${bestClass} (${Math.round(highestProbability * 100)}%)`;
-
-            // 특정 클래스가 감지되면 해당 페이지로 이동
-            if (highestProbability > 0.9) {
-                if (bestClass === "ClassA") {
-                    window.location.href = "pageA.html";
-                } else if (bestClass === "ClassB") {
-                    window.location.href = "pageB.html";
-                } else if (bestClass === "ClassC") {
-                    window.location.href = "pageC.html";
+                if (probability > 0.9) {
+                    console.log(`예측된 클래스: ${classPrediction}, 확률: ${probability}`);
+                    navigateToSite(classPrediction);
+                    break;
                 }
             }
         }
 
-        // 모델 로드 시작
-        loadModel();
+        function navigateToSite(className) {
+            const sites = {
+                "비닐": "vinyl_result.html",
+                "캔": "can_result.html",
+                "스티로폼": "styrofoam_result.html",
+                "계란 껍질": "egg_result.html",
+                "고철": "steal_result.html",
+                "바나나 껍질": "banana_result.html",
+                "귤 껍질": "orange_result.html",
+                "과자봉지": "snack_result.html",
+                "종이박스": "paper_result.html",
+                "플라스틱": "plastic_result.html",
+                "치킨 뼈": "chicken_result.html"
+            };
+
+            const classNameLower = className.trim().toLowerCase();
+
+            for (const [key, value] of Object.entries(sites)) {
+                if (key.toLowerCase() === classNameLower) {
+                    window.location.href = value;
+                    return;
+                }
+            }
+
+            console.error("해당 클래스에 대한 사이트가 없습니다:", className);
+        }
+
+        // 필터링 기능 코드
+        function filterList() {
+            const searchInput = document.getElementById('search').value.toLowerCase();
+            const items = document.getElementById('itemList').getElementsByTagName('li');
+            let hasVisibleItems = false;
+
+            for (let i = 0; i < items.length; i++) {
+                const item = items[i].textContent.toLowerCase();
+                if (item.includes(searchInput)) {
+                    items[i].style.display = '';
+                    hasVisibleItems = true;
+                } else {
+                    items[i].style.display = 'none';
+                }
+            }
+
+            const noResultsMessage = document.querySelector('.no-results');
+            if (!hasVisibleItems && searchInput) {
+                if (!noResultsMessage) {
+                    const message = document.createElement('li');
+                    message.className = 'no-results';
+                    message.textContent = '검색 결과가 없습니다.';
+                    document.getElementById('itemList').appendChild(message);
+                }
+            } else {
+                if (noResultsMessage) {
+                    noResultsMessage.remove();
+                }
+            }
+
+            document.getElementById('itemListContainer').style.display = hasVisibleItems || searchInput ? 'block' : 'none';
+        }
+
+        document.getElementById('search').addEventListener('input', filterList);
+        document.getElementById('search').addEventListener('focus', filterList);
+        document.getElementById('search').addEventListener('blur', () => {
+            setTimeout(() => {
+                document.getElementById('itemListContainer').style.display = 'none';
+            }, 100);
+        });
+
+        init();
     </script>
 </body>
 </html>
